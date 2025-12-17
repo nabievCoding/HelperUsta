@@ -115,23 +115,38 @@ export default function Orders() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="card text-center">
+        <div
+          className="card text-center cursor-pointer hover:shadow-lg transition-all hover:scale-105 duration-200"
+          onClick={() => setFilterStatus('all')}
+        >
           <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
           <p className="text-sm text-gray-600 mt-1">Jami</p>
         </div>
-        <div className="card text-center">
+        <div
+          className="card text-center cursor-pointer hover:shadow-lg transition-all hover:scale-105 duration-200"
+          onClick={() => setFilterStatus('pending')}
+        >
           <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
           <p className="text-sm text-gray-600 mt-1">Kutilmoqda</p>
         </div>
-        <div className="card text-center">
+        <div
+          className="card text-center cursor-pointer hover:shadow-lg transition-all hover:scale-105 duration-200"
+          onClick={() => setFilterStatus('in_progress')}
+        >
           <p className="text-2xl font-bold text-purple-600">{stats.in_progress}</p>
           <p className="text-sm text-gray-600 mt-1">Jarayonda</p>
         </div>
-        <div className="card text-center">
+        <div
+          className="card text-center cursor-pointer hover:shadow-lg transition-all hover:scale-105 duration-200"
+          onClick={() => setFilterStatus('completed')}
+        >
           <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
           <p className="text-sm text-gray-600 mt-1">Bajarildi</p>
         </div>
-        <div className="card text-center">
+        <div
+          className="card text-center cursor-pointer hover:shadow-lg transition-all hover:scale-105 duration-200"
+          onClick={() => setFilterStatus('cancelled')}
+        >
           <p className="text-2xl font-bold text-red-600">{stats.cancelled}</p>
           <p className="text-sm text-gray-600 mt-1">Bekor qilindi</p>
         </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
   Users,
@@ -23,6 +24,7 @@ import {
 } from 'recharts';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalMasters: 0,
@@ -159,6 +161,7 @@ export default function Dashboard() {
       icon: Users,
       color: 'bg-blue-500',
       trend: stats.newUsersThisMonth > 0 ? 'up' : 'neutral',
+      link: '/users',
     },
     {
       title: 'Ustalar',
@@ -167,6 +170,7 @@ export default function Dashboard() {
       icon: UserCog,
       color: 'bg-green-500',
       trend: stats.newMastersThisMonth > 0 ? 'up' : 'neutral',
+      link: '/masters',
     },
     {
       title: 'Buyurtmalar',
@@ -175,6 +179,7 @@ export default function Dashboard() {
       icon: ShoppingCart,
       color: 'bg-orange-500',
       trend: stats.ordersThisMonth > 0 ? 'up' : 'neutral',
+      link: '/orders',
     },
     {
       title: 'Daromad',
@@ -183,6 +188,7 @@ export default function Dashboard() {
       icon: DollarSign,
       color: 'bg-purple-500',
       trend: stats.revenueThisMonth > 0 ? 'up' : 'neutral',
+      link: '/orders',
     },
   ];
 
@@ -199,7 +205,11 @@ export default function Dashboard() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((stat) => (
-          <div key={stat.title} className="card hover:shadow-lg transition-shadow">
+          <div
+            key={stat.title}
+            className="card hover:shadow-lg transition-all cursor-pointer hover:scale-105 duration-200"
+            onClick={() => navigate(stat.link)}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 mb-1">{stat.title}</p>

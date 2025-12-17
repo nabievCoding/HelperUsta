@@ -136,11 +136,11 @@ export default function Chat() {
       </div>
 
       {/* Chat Container */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-250px)]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ height: 'calc(100vh - 250px)' }}>
         {/* Chat Rooms List */}
-        <div className="lg:col-span-1 card p-0 flex flex-col h-full">
+        <div className="lg:col-span-1 card p-0 flex flex-col" style={{ height: '100%' }}>
           {/* Search */}
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -154,7 +154,7 @@ export default function Chat() {
           </div>
 
           {/* Rooms List */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100% - 80px)' }}>
             {filteredRooms.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-500">
                 <MessageSquare className="w-12 h-12 mb-2" />
@@ -241,11 +241,11 @@ export default function Chat() {
         </div>
 
         {/* Messages Area */}
-        <div className="lg:col-span-2 card p-0 flex flex-col h-full">
+        <div className="lg:col-span-2 card p-0 flex flex-col" style={{ height: '100%' }}>
           {selectedRoom ? (
             <>
               {/* Chat Header */}
-              <div className="p-4 border-b border-gray-200 bg-gray-50">
+              <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -276,7 +276,7 @@ export default function Chat() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ maxHeight: 'calc(100% - 140px)', scrollBehavior: 'smooth' }}>
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-gray-500">
                     <MessageSquare className="w-12 h-12 mb-2" />
@@ -375,7 +375,7 @@ export default function Chat() {
               </div>
 
               {/* Input Area (Read-only for admin) */}
-              <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <MessageSquare className="w-5 h-5" />
                   <p>Admin sifatida faqat ko'rish mumkin</p>
