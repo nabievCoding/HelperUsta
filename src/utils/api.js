@@ -1,6 +1,6 @@
-// Netlify funksiyalarini chaqirish uchun helper funksiyalar
+// Vercel serverless funksiyalarini chaqirish uchun helper funksiyalar
 
-const API_BASE = '/.netlify/functions';
+const API_BASE = '/api';
 
 /**
  * Generic API request function
@@ -46,39 +46,39 @@ export async function sendDataToHello(data) {
 }
 
 /**
- * Get data from API function
+ * Get data from Supabase API function
  */
 export async function getData() {
-  return apiRequest('/api', {
+  return apiRequest('/supabase', {
     method: 'GET',
   });
 }
 
 /**
- * Create new record via API function
+ * Create new record via Supabase API function
  */
 export async function createRecord(data) {
-  return apiRequest('/api', {
+  return apiRequest('/supabase', {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
 /**
- * Update record via API function
+ * Update record via Supabase API function
  */
 export async function updateRecord(id, data) {
-  return apiRequest('/api', {
+  return apiRequest('/supabase', {
     method: 'PUT',
     body: JSON.stringify({ id, ...data }),
   });
 }
 
 /**
- * Delete record via API function
+ * Delete record via Supabase API function
  */
 export async function deleteRecord(id) {
-  return apiRequest(`/api?id=${id}`, {
+  return apiRequest(`/supabase?id=${id}`, {
     method: 'DELETE',
   });
 }
