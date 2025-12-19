@@ -35,8 +35,6 @@ export default function Chat() {
         return;
       }
 
-      console.log('Chat rooms:', rooms);
-
       // Fetch orders separately for each room
       if (rooms && rooms.length > 0) {
         const orderIds = rooms.map(room => room.order_id).filter(Boolean);
@@ -57,7 +55,6 @@ export default function Chat() {
               };
             });
 
-            console.log('Rooms with orders:', roomsWithOrders);
             setChatRooms(roomsWithOrders);
           } else {
             setChatRooms(rooms);

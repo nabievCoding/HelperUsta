@@ -25,7 +25,6 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (username, password) => {
-    console.log('Logging in...'+username+"\n"+password);
     try {
       // Query admin_users table
       const { data, error } = await supabase
@@ -34,7 +33,7 @@ export const AuthProvider = ({ children }) => {
         .eq('username', username)
         .eq('password', password) // Note: In production, use proper password hashing
          .single();
-        
+
 
       if (error) throw error;
 
@@ -42,7 +41,6 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Invalid credentials');
       }
       if (!data.is_active) {
-     console.log(data);
         throw new Error('Account is not active');
       }
 

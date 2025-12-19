@@ -7,7 +7,6 @@ import {
   ShoppingCart,
   DollarSign,
   TrendingUp,
-  TrendingDown,
   Activity,
 } from 'lucide-react';
 import {
@@ -48,49 +47,33 @@ export default function Dashboard() {
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      // Fetch users count
-      const { count: usersCount } = await supabase
-        .from('users')
-        .select('*', { count: 'exact', head: true });
+      // Fetch all data in parallel
+      const [
+        { count: usersCount },
+        { count: newUsersCount },
+        { count: mastersCount },
+        { count: newMastersCount },
+        { count: ordersCount },
+        { data: revenueData },
+        { count: ordersThisMonthCount },
+        { data: revenueThisMonthData },
+      ] = await Promise.all([
+        // Users
+        supabase.from('users').select('*', { count: 'exact', head: true }),
+        supabase.from('users').select('*', { count: 'exact', head: true }).gte('created_at', monthStart.toISOString()),
 
-      const { count: newUsersCount } = await supabase
-        .from('users')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', monthStart.toISOString());
+        // Masters
+        supabase.from('masters').select('*', { count: 'exact', head: true }),
+        supabase.from('masters').select('*', { count: 'exact', head: true }).gte('created_at', monthStart.toISOString()),
 
-      // Fetch masters count
-      const { count: mastersCount } = await supabase
-        .from('masters')
-        .select('*', { count: 'exact', head: true });
-
-      const { count: newMastersCount } = await supabase
-        .from('masters')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', monthStart.toISOString());
-
-      // Fetch orders count and revenue
-      const { count: ordersCount } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true });
-
-      const { data: revenueData } = await supabase
-        .from('orders')
-        .select('total_price')
-        .eq('status', 'completed');
+        // Orders
+        supabase.from('orders').select('*', { count: 'exact', head: true }),
+        supabase.from('orders').select('total_price').eq('status', 'completed'),
+        supabase.from('orders').select('*', { count: 'exact', head: true }).gte('created_at', monthStart.toISOString()),
+        supabase.from('orders').select('total_price').eq('status', 'completed').gte('created_at', monthStart.toISOString()),
+      ]);
 
       const totalRevenue = revenueData?.reduce((sum, order) => sum + parseFloat(order.total_price || 0), 0) || 0;
-
-      const { count: ordersThisMonthCount } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', monthStart.toISOString());
-
-      const { data: revenueThisMonthData } = await supabase
-        .from('orders')
-        .select('total_price')
-        .eq('status', 'completed')
-        .gte('created_at', monthStart.toISOString());
-
       const revenueThisMonth = revenueThisMonthData?.reduce((sum, order) => sum + parseFloat(order.total_price || 0), 0) || 0;
 
       setStats({
@@ -104,7 +87,7 @@ export default function Dashboard() {
         revenueThisMonth: revenueThisMonth,
       });
 
-      // Fetch monthly data for charts (last 6 months)
+      // Fetch monthly data for charts (in parallel with stats)
       await fetchMonthlyChartData();
 
       setLoading(false);
@@ -116,38 +99,51 @@ export default function Dashboard() {
 
   const fetchMonthlyChartData = async () => {
     try {
-      const months = [];
       const now = new Date();
+      const monthsData = [];
 
+      // Prepare all month ranges
       for (let i = 5; i >= 0; i--) {
         const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const nextDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-
-        const monthName = date.toLocaleString('uz-UZ', { month: 'short' });
-
-        const { count: ordersCount } = await supabase
-          .from('orders')
-          .select('*', { count: 'exact', head: true })
-          .gte('created_at', date.toISOString())
-          .lt('created_at', nextDate.toISOString());
-
-        const { data: revenueData } = await supabase
-          .from('orders')
-          .select('total_price')
-          .eq('status', 'completed')
-          .gte('created_at', date.toISOString())
-          .lt('created_at', nextDate.toISOString());
-
-        const revenue = revenueData?.reduce((sum, order) => sum + parseFloat(order.total_price || 0), 0) || 0;
-
-        months.push({
-          month: monthName,
-          orders: ordersCount || 0,
-          revenue: Math.round(revenue),
+        monthsData.push({
+          name: date.toLocaleString('uz-UZ', { month: 'short' }),
+          date,
+          nextDate,
         });
       }
 
-      setMonthlyData(months);
+      // Fetch all months data in parallel
+      const results = await Promise.all(
+        monthsData.map(async ({ name, date, nextDate }) => {
+          const [
+            { count: ordersCount },
+            { data: revenueData },
+          ] = await Promise.all([
+            supabase
+              .from('orders')
+              .select('*', { count: 'exact', head: true })
+              .gte('created_at', date.toISOString())
+              .lt('created_at', nextDate.toISOString()),
+            supabase
+              .from('orders')
+              .select('total_price')
+              .eq('status', 'completed')
+              .gte('created_at', date.toISOString())
+              .lt('created_at', nextDate.toISOString()),
+          ]);
+
+          const revenue = revenueData?.reduce((sum, order) => sum + parseFloat(order.total_price || 0), 0) || 0;
+
+          return {
+            month: name,
+            orders: ordersCount || 0,
+            revenue: Math.round(revenue),
+          };
+        })
+      );
+
+      setMonthlyData(results);
     } catch (error) {
       console.error('Error fetching monthly data:', error);
     }
@@ -194,8 +190,31 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        {/* Skeleton Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="card animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="h-4 bg-gray-200 rounded w-24 mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded w-16 mb-2"></div>
+                  <div className="h-3 bg-gray-200 rounded w-20"></div>
+                </div>
+                <div className="w-16 h-16 bg-gray-200 rounded-xl"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Skeleton Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[1, 2].map((i) => (
+            <div key={i} className="card animate-pulse">
+              <div className="h-6 bg-gray-200 rounded w-48 mb-4"></div>
+              <div className="h-64 bg-gray-200 rounded"></div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
