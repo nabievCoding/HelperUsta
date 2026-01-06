@@ -10,6 +10,7 @@ import {
   CreditCard,
   Star,
   MessageSquare,
+  Phone,
   Bell,
   Settings,
   LogOut,
@@ -27,6 +28,7 @@ const navigation = [
   { name: 'To\'lovlar', href: '/payments', icon: CreditCard },
   { name: 'Sharhlar', href: '/reviews', icon: Star },
   { name: 'Chat', href: '/chat', icon: MessageSquare },
+  { name: 'Call Center', href: '/call-center', icon: Phone },
   { name: 'Bildirishnomalar', href: '/notifications', icon: Bell },
   { name: 'Sozlamalar', href: '/settings', icon: Settings },
 ];

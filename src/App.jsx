@@ -14,6 +14,7 @@ import Notifications from './pages/Notifications';
 import MasterRegistration from './pages/MasterRegistration';
 import MasterDetail from './pages/MasterDetail';
 import Chat from './pages/Chat';
+import CallCenter from './pages/CallCenter';
 import Settings from './pages/Settings';
 
 function App() {
@@ -44,6 +45,7 @@ function App() {
             <Route path="payments" element={<Payments />} />
             <Route path="reviews" element={<Reviews />} />
             <Route path="chat" element={<Chat />} />
+            <Route path="call-center" element={<CallCenter />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="settings" element={<Settings />} />
           </Route>
