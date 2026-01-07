@@ -16,8 +16,20 @@ import {
   MoreVertical,
   Trash2,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+
+// Sending Dots Animation Component
+const SendingDots = () => {
+  return (
+    <div className="flex items-center gap-0.5">
+      <span className="w-1 h-1 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+      <span className="w-1 h-1 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+      <span className="w-1 h-1 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+    </div>
+  );
+};
 
 const CallCenter = () => {
   const [chatRooms, setChatRooms] = useState([]);
@@ -28,33 +40,38 @@ const CallCenter = () => {
   const [loading, setLoading] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [playingAudio, setPlayingAudio] = useState(null);
+  const [audioProgress, setAudioProgress] = useState({});
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [showMenu, setShowMenu] = useState(false);
   const messagesEndRef = useRef(null);
   const audioRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordingTimerRef = useRef(null);
+  const menuRef = useRef(null);
 
   // Barcha chat roomlarni olish
   useEffect(() => {
     fetchChatRooms();
-    
-    // Real-time subscription for new messages
-    const subscription = supabase
-      .channel('admin-chats-all')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'admin_chats',
-      }, (payload) => {
-        console.log('New message received:', payload);
-        handleNewMessage(payload.new);
-      })
-      .subscribe();
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    // Real-time subscription for new messages
+    if (supabase) {
+      const subscription = supabase
+        .channel('admin-chats-all')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'admin_chats',
+        }, (payload) => {
+          console.log('New message received:', payload);
+          handleNewMessage(payload.new);
+        })
+        .subscribe();
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
   }, []);
 
   // Tanlangan chat uchun xabarlarni olish
@@ -69,6 +86,20 @@ const CallCenter = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowMenu(false);
+      }
+    };
+
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showMenu]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -200,7 +231,9 @@ const CallCenter = () => {
       };
 
       if (existingIndex >= 0) {
-        updatedRoom.unreadCount += prev[existingIndex].unreadCount;
+        if (message.sender_type === 'user') {
+          updatedRoom.unreadCount += prev[existingIndex].unreadCount;
+        }
         updatedRoom.user = prev[existingIndex].user;
         const newRooms = [...prev];
         newRooms.splice(existingIndex, 1);
@@ -211,7 +244,13 @@ const CallCenter = () => {
 
     // Update current chat messages if this chat is selected
     if (selectedChat && selectedChat.user_id === message.user_id) {
-      setMessages(prev => [...prev, message]);
+      // Check if message already exists (to prevent duplicates)
+      setMessages(prev => {
+        const exists = prev.some(m => m.id === message.id);
+        if (exists) return prev;
+        return [...prev, message];
+      });
+
       if (message.sender_type === 'user') {
         markMessagesAsRead(message.user_id);
       }
@@ -221,37 +260,94 @@ const CallCenter = () => {
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedChat) return;
 
+    const tempId = `temp-${Date.now()}`;
+    const messageText = newMessage.trim();
+
+    // Optimistic update - immediately show message as "sending"
+    const tempMessage = {
+      id: tempId,
+      user_id: selectedChat.user_id,
+      sender_type: 'admin',
+      message_type: 'text',
+      message_text: messageText,
+      created_at: new Date().toISOString(),
+      is_read: false,
+      status: 'sending'
+    };
+
+    setMessages(prev => [...prev, tempMessage]);
+    setNewMessage('');
+
     try {
       setSendingMessage(true);
-      
+
       const messageData = {
         user_id: selectedChat.user_id,
         sender_type: 'admin',
         message_type: 'text',
-        message_text: newMessage.trim(),
+        message_text: messageText,
         is_read: false,
       };
 
       if (supabase) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('admin_chats')
-          .insert(messageData);
+          .insert(messageData)
+          .select()
+          .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error sending message:', error);
+          // Update temp message to show error
+          setMessages(prev => prev.map(msg =>
+            msg.id === tempId ? { ...msg, status: 'error' } : msg
+          ));
+          return;
+        }
+
+        // Replace temp message with real one
+        if (data) {
+          setMessages(prev => {
+            const withoutTemp = prev.filter(msg => msg.id !== tempId);
+            return [...withoutTemp, { ...data, status: 'sent' }];
+          });
+
+          // Update chat room list
+          setChatRooms(prev => {
+            const existingIndex = prev.findIndex(r => r.user_id === selectedChat.user_id);
+            if (existingIndex >= 0) {
+              const updatedRooms = [...prev];
+              updatedRooms[existingIndex] = {
+                ...updatedRooms[existingIndex],
+                lastMessage: data.message_text,
+                lastMessageTime: data.created_at,
+              };
+              // Move to top
+              const [updatedRoom] = updatedRooms.splice(existingIndex, 1);
+              return [updatedRoom, ...updatedRooms];
+            }
+            return prev;
+          });
+        }
       } else {
         // Mock: Add to local state
         const mockMessage = {
           ...messageData,
           id: Date.now(),
           created_at: new Date().toISOString(),
+          status: 'sent'
         };
-        setMessages(prev => [...prev, mockMessage]);
+        setMessages(prev => {
+          const withoutTemp = prev.filter(msg => msg.id !== tempId);
+          return [...withoutTemp, mockMessage];
+        });
       }
 
-      setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Xabar yuborishda xatolik yuz berdi');
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempId ? { ...msg, status: 'error' } : msg
+      ));
     } finally {
       setSendingMessage(false);
     }
@@ -260,21 +356,39 @@ const CallCenter = () => {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+
+      // Try to use audio/mp4 if supported, fallback to webm
+      let mimeType = 'audio/webm';
+      const supportedTypes = [
+        'audio/mp4',
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus'
+      ];
+
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type;
+          console.log('Using audio format:', mimeType);
+          break;
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       const chunks = [];
 
       mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
       mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        await sendVoiceMessage(blob);
+        const blob = new Blob(chunks, { type: mimeType });
+        await sendVoiceMessage(blob, mimeType);
         stream.getTracks().forEach(track => track.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
-      
+
       recordingTimerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
@@ -292,25 +406,59 @@ const CallCenter = () => {
     }
   };
 
-  const sendVoiceMessage = async (blob) => {
+  const sendVoiceMessage = async (blob, mimeType) => {
     if (!selectedChat) return;
+
+    const tempId = `temp-voice-${Date.now()}`;
+    const savedDuration = recordingTime;
+
+    // Optimistic update - show voice message as "sending"
+    const tempMessage = {
+      id: tempId,
+      user_id: selectedChat.user_id,
+      sender_type: 'admin',
+      message_type: 'voice',
+      voice_url: URL.createObjectURL(blob),
+      voice_duration: savedDuration,
+      is_read: false,
+      created_at: new Date().toISOString(),
+      status: 'sending'
+    };
+
+    setMessages(prev => [...prev, tempMessage]);
+    setRecordingTime(0);
 
     try {
       setSendingMessage(true);
       const timestamp = Date.now();
-      const fileName = `voice_admin_${selectedChat.user_id}_${timestamp}.webm`;
+
+      // Determine file extension based on mime type
+      let extension = '.webm';
+      if (mimeType.includes('mp4')) extension = '.m4a';
+      else if (mimeType.includes('ogg')) extension = '.ogg';
+      else if (mimeType.includes('opus')) extension = '.opus';
+
+      const fileName = `voice_admin_${selectedChat.user_id}_${timestamp}${extension}`;
+
+      console.log('Uploading voice with type:', mimeType, 'file:', fileName);
 
       if (supabase) {
         // Upload to storage
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('voice')
           .upload(fileName, blob, {
-            contentType: 'audio/webm',
+            contentType: mimeType,
             cacheControl: '3600',
             upsert: false
           });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          setMessages(prev => prev.map(msg =>
+            msg.id === tempId ? { ...msg, status: 'error' } : msg
+          ));
+          return;
+        }
 
         // Get public URL
         const { data: urlData } = supabase.storage
@@ -318,18 +466,51 @@ const CallCenter = () => {
           .getPublicUrl(fileName);
 
         // Save to database
-        const { error: dbError } = await supabase
+        const { data: messageData, error: dbError } = await supabase
           .from('admin_chats')
           .insert({
             user_id: selectedChat.user_id,
             sender_type: 'admin',
             message_type: 'voice',
             voice_url: urlData.publicUrl,
-            voice_duration: recordingTime,
+            voice_duration: savedDuration,
             is_read: false
+          })
+          .select()
+          .single();
+
+        if (dbError) {
+          console.error('Database error:', dbError);
+          setMessages(prev => prev.map(msg =>
+            msg.id === tempId ? { ...msg, status: 'error' } : msg
+          ));
+          return;
+        }
+
+        // Replace temp message with real one
+        if (messageData) {
+          setMessages(prev => {
+            const withoutTemp = prev.filter(msg => msg.id !== tempId);
+            return [...withoutTemp, { ...messageData, status: 'sent' }];
           });
 
-        if (dbError) throw dbError;
+          // Update chat room list
+          setChatRooms(prev => {
+            const existingIndex = prev.findIndex(r => r.user_id === selectedChat.user_id);
+            if (existingIndex >= 0) {
+              const updatedRooms = [...prev];
+              updatedRooms[existingIndex] = {
+                ...updatedRooms[existingIndex],
+                lastMessage: '🎤 Ovozli xabar',
+                lastMessageTime: messageData.created_at,
+              };
+              // Move to top
+              const [updatedRoom] = updatedRooms.splice(existingIndex, 1);
+              return [updatedRoom, ...updatedRooms];
+            }
+            return prev;
+          });
+        }
       } else {
         // Mock
         const mockMessage = {
@@ -338,33 +519,75 @@ const CallCenter = () => {
           sender_type: 'admin',
           message_type: 'voice',
           voice_url: URL.createObjectURL(blob),
-          voice_duration: recordingTime,
+          voice_duration: savedDuration,
           is_read: false,
           created_at: new Date().toISOString(),
+          status: 'sent'
         };
-        setMessages(prev => [...prev, mockMessage]);
+        setMessages(prev => {
+          const withoutTemp = prev.filter(msg => msg.id !== tempId);
+          return [...withoutTemp, mockMessage];
+        });
       }
 
-      setRecordingTime(0);
     } catch (error) {
       console.error('Error sending voice message:', error);
-      alert('Ovozli xabar yuborishda xatolik');
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempId ? { ...msg, status: 'error' } : msg
+      ));
     } finally {
       setSendingMessage(false);
     }
   };
 
-  const playAudio = (url, messageId) => {
-    if (playingAudio === messageId) {
-      audioRef.current?.pause();
-      setPlayingAudio(null);
-    } else {
-      if (audioRef.current) {
-        audioRef.current.src = url;
-        audioRef.current.play();
-        setPlayingAudio(messageId);
-        audioRef.current.onended = () => setPlayingAudio(null);
+  const playAudio = async (url, messageId) => {
+    try {
+      if (playingAudio === messageId) {
+        audioRef.current?.pause();
+        setPlayingAudio(null);
+        return;
       }
+
+      if (audioRef.current) {
+        // Stop any currently playing audio
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+
+        audioRef.current.src = url;
+
+        // Add error handling
+        audioRef.current.onerror = (e) => {
+          console.error('Audio playback error:', e);
+          alert('Ovozli xabarni eshitib bo\'lmadi. Format qo\'llab-quvvatlanmaydi.');
+          setPlayingAudio(null);
+        };
+
+        // Wait for audio to be ready
+        await audioRef.current.play().catch(err => {
+          console.error('Play error:', err);
+          alert('Ovozli xabarni ijro etib bo\'lmadi');
+          setPlayingAudio(null);
+        });
+
+        setPlayingAudio(messageId);
+
+        // Track audio progress
+        audioRef.current.ontimeupdate = () => {
+          if (audioRef.current && audioRef.current.duration) {
+            const progress = (audioRef.current.currentTime / audioRef.current.duration) * 100;
+            setAudioProgress(prev => ({ ...prev, [messageId]: progress }));
+          }
+        };
+
+        audioRef.current.onended = () => {
+          setPlayingAudio(null);
+          setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
+        };
+      }
+    } catch (error) {
+      console.error('Error in playAudio:', error);
+      alert('Ovozli xabarni eshitib bo\'lmadi');
+      setPlayingAudio(null);
     }
   };
 
@@ -391,6 +614,71 @@ const CallCenter = () => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const deleteMessage = async (messageId) => {
+    if (!window.confirm('Bu xabarni o\'chirmoqchimisiz?')) return;
+
+    try {
+      // Optimistic update
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+
+      if (supabase) {
+        const { error } = await supabase
+          .from('admin_chats')
+          .delete()
+          .eq('id', messageId);
+
+        if (error) {
+          console.error('Error deleting message:', error);
+          alert('Xabarni o\'chirishda xatolik');
+          // Reload messages
+          if (selectedChat) {
+            fetchMessages(selectedChat.user_id);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in deleteMessage:', error);
+      alert('Xabarni o\'chirishda xatolik');
+    }
+  };
+
+  const clearChatHistory = async () => {
+    if (!selectedChat) return;
+
+    if (!window.confirm(`${selectedChat.user?.full_name || 'Bu foydalanuvchi'} bilan barcha suhbatni o'chirmoqchimisiz?`)) {
+      return;
+    }
+
+    try {
+      if (supabase) {
+        const { error } = await supabase
+          .from('admin_chats')
+          .delete()
+          .eq('user_id', selectedChat.user_id);
+
+        if (error) {
+          console.error('Error clearing chat:', error);
+          alert('Suhbatni o\'chirishda xatolik');
+          return;
+        }
+
+        // Clear messages locally
+        setMessages([]);
+
+        // Update chat rooms
+        setChatRooms(prev => prev.filter(room => room.user_id !== selectedChat.user_id));
+
+        // Deselect chat
+        setSelectedChat(null);
+
+        alert('Suhbat muvaffaqiyatli o\'chirildi');
+      }
+    } catch (error) {
+      console.error('Error in clearChatHistory:', error);
+      alert('Suhbatni o\'chirishda xatolik');
+    }
   };
 
   const filteredChatRooms = chatRooms.filter(room => {
@@ -602,9 +890,29 @@ const CallCenter = () => {
                 </p>
               </div>
 
-              <button className="p-2 hover:bg-gray-100 rounded-lg">
-                <MoreVertical size={20} className="text-gray-600" />
-              </button>
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <MoreVertical size={20} className="text-gray-600" />
+                </button>
+
+                {showMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <button
+                      onClick={() => {
+                        clearChatHistory();
+                        setShowMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                    >
+                      <Trash2 size={16} />
+                      <span>Suhbatni tozalash</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Messages */}
@@ -624,23 +932,39 @@ const CallCenter = () => {
                       </div>
                     )}
                     
-                    <div className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`flex ${isAdmin ? 'justify-end' : 'justify-start'} group`}>
                       <div
-                        className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm ${
+                        className={`relative max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm ${
                           isAdmin
                             ? 'bg-blue-600 text-white rounded-br-md'
                             : 'bg-white text-gray-900 rounded-bl-md'
                         }`}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          deleteMessage(message.id);
+                        }}
                       >
+                        <button
+                          onClick={() => deleteMessage(message.id)}
+                          className={`absolute -top-2 -right-2 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity ${
+                            message.status === 'sending' ? 'hidden' : ''
+                          }`}
+                          title="O'chirish"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                         {message.message_type === 'voice' ? (
                           <div className="flex items-center gap-3 min-w-[180px]">
                             <button
-                              onClick={() => playAudio(message.voice_url, message.id)}
+                              onClick={() => message.status !== 'sending' && playAudio(message.voice_url, message.id)}
+                              disabled={message.status === 'sending'}
                               className={`p-2 rounded-full ${
                                 isAdmin ? 'bg-white/20 hover:bg-white/30' : 'bg-blue-100 hover:bg-blue-200'
-                              } transition-colors`}
+                              } transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
-                              {playingAudio === message.id ? (
+                              {message.status === 'sending' ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              ) : playingAudio === message.id ? (
                                 <Pause size={18} className={isAdmin ? 'text-white' : 'text-blue-600'} />
                               ) : (
                                 <Play size={18} className={isAdmin ? 'text-white' : 'text-blue-600'} />
@@ -648,9 +972,9 @@ const CallCenter = () => {
                             </button>
                             <div className="flex-1">
                               <div className={`h-1 rounded-full ${isAdmin ? 'bg-white/30' : 'bg-gray-200'}`}>
-                                <div 
-                                  className={`h-full rounded-full ${isAdmin ? 'bg-white' : 'bg-blue-500'}`}
-                                  style={{ width: playingAudio === message.id ? '60%' : '0%' }}
+                                <div
+                                  className={`h-full rounded-full ${isAdmin ? 'bg-white' : 'bg-blue-500'} transition-all duration-200`}
+                                  style={{ width: `${audioProgress[message.id] || 0}%` }}
                                 ></div>
                               </div>
                             </div>
@@ -667,11 +991,19 @@ const CallCenter = () => {
                         }`}>
                           <span className="text-xs">{formatTime(message.created_at)}</span>
                           {isAdmin && (
-                            message.is_read ? (
-                              <CheckCheck size={14} className="text-blue-300" />
-                            ) : (
-                              <Check size={14} />
-                            )
+                            <div className="ml-1">
+                              {message.status === 'sending' && <SendingDots />}
+                              {message.status === 'error' && (
+                                <span className="text-red-300 text-xs font-bold">!</span>
+                              )}
+                              {(!message.status || message.status === 'sent') && (
+                                message.is_read ? (
+                                  <CheckCheck size={14} className="text-blue-300" />
+                                ) : (
+                                  <Check size={14} className="text-white/70" />
+                                )
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -714,8 +1046,8 @@ const CallCenter = () => {
                     placeholder="Xabar yozing..."
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                    className="flex-1 px-4 py-3 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                    className="flex-1 px-4 py-3 bg-gray-100 text-black placeholder-gray-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                   />
                   
                   <button
