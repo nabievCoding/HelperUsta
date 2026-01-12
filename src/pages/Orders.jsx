@@ -24,12 +24,50 @@ export default function Orders() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterSource, setFilterSource] = useState('all'); // 'all', 'call_center', 'direct'
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderReview, setOrderReview] = useState(null);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [masters, setMasters] = useState([]);
+  const [selectedMaster, setSelectedMaster] = useState(null);
+  const [assignPrice, setAssignPrice] = useState('');
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+
+    // Real-time subscription for orders
+    const subscription = supabase
+      .channel('orders-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'orders',
+      }, (payload) => {
+        console.log('Order change received:', payload);
+
+        if (payload.eventType === 'UPDATE') {
+          // Update the specific order in the list
+          setOrders(prevOrders =>
+            prevOrders.map(order =>
+              order.id === payload.new.id ? payload.new : order
+            )
+          );
+
+          // If the updated order is currently selected, update it too
+          if (selectedOrder && selectedOrder.id === payload.new.id) {
+            setSelectedOrder(payload.new);
+          }
+        } else if (payload.eventType === 'INSERT') {
+          // Add new order to the list
+          setOrders(prevOrders => [payload.new, ...prevOrders]);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [selectedOrder]);
 
   const fetchOrders = async () => {
     try {
@@ -84,7 +122,13 @@ export default function Orders() {
 
     const matchesStatus = filterStatus === 'all' || order.status === filterStatus;
 
-    return matchesSearch && matchesStatus;
+    // Call Center filter: check if order_source is 'call_center' or if master_id is null (admin buyurtma)
+    const matchesSource =
+      filterSource === 'all' ||
+      (filterSource === 'call_center' && (order.order_source === 'call_center' || !order.master_id)) ||
+      (filterSource === 'direct' && order.order_source !== 'call_center' && order.master_id);
+
+    return matchesSearch && matchesStatus && matchesSource;
   });
 
   const stats = {
@@ -93,6 +137,95 @@ export default function Orders() {
     in_progress: orders.filter(o => o.status === 'in_progress').length,
     completed: orders.filter(o => o.status === 'completed').length,
     cancelled: orders.filter(o => o.status === 'cancelled').length,
+    call_center: orders.filter(o => o.order_source === 'call_center' || !o.master_id).length,
+  };
+
+  const fetchMasters = async (categoryId) => {
+    try {
+      const { data, error } = await supabase
+        .from('masters')
+        .select('id, full_name, phone, hourly_rate, profession, rating')
+        .eq('category_id', categoryId)
+        .eq('is_available', true)
+        .order('rating', { ascending: false });
+
+      if (error) throw error;
+      setMasters(data || []);
+    } catch (error) {
+      console.error('Error fetching masters:', error);
+      setMasters([]);
+    }
+  };
+
+  const handleAssignMaster = async () => {
+    if (!selectedMaster || !assignPrice || !selectedOrder) return;
+
+    try {
+      const priceValue = parseFloat(assignPrice) * 1000;
+
+      // Get master details
+      const master = masters.find(m => m.id === selectedMaster);
+      if (!master) {
+        alert('Usta topilmadi');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          master_id: selectedMaster,
+          master_name: master.full_name,
+          master_profession: master.profession,
+          base_price: priceValue,
+          total_price: priceValue,
+          status: 'accepted',
+          accepted_at: new Date().toISOString()
+        })
+        .eq('id', selectedOrder.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setOrders(orders.map(order =>
+        order.id === selectedOrder.id
+          ? {
+              ...order,
+              master_id: selectedMaster,
+              master_name: master.full_name,
+              master_profession: master.profession,
+              base_price: priceValue,
+              total_price: priceValue,
+              status: 'accepted',
+              accepted_at: new Date().toISOString()
+            }
+          : order
+      ));
+
+      setSelectedOrder(null);
+      setShowAssignModal(false);
+      setSelectedMaster(null);
+      setAssignPrice('');
+
+      alert('Usta muvaffaqiyatli biriktirildi!');
+    } catch (error) {
+      console.error('Error assigning master:', error);
+      alert('Ustani biriktrishda xatolik yuz berdi');
+    }
+  };
+
+  const handleMasterSelect = (masterId) => {
+    setSelectedMaster(masterId);
+    const master = masters.find(m => m.id === masterId);
+    if (master && master.hourly_rate) {
+      // Auto-fill price based on master's hourly rate
+      setAssignPrice((master.hourly_rate / 1000).toString());
+    }
+  };
+
+  const openAssignModal = async (order) => {
+    setSelectedOrder(order);
+    setShowAssignModal(true);
+    await fetchMasters(order.category_id);
   };
 
   if (loading) {
@@ -114,13 +247,20 @@ export default function Orders() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div
           className="card text-center cursor-pointer hover:shadow-lg transition-all hover:scale-105 duration-200"
           onClick={() => setFilterStatus('all')}
         >
           <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
           <p className="text-sm text-gray-600 mt-1">Jami</p>
+        </div>
+        <div
+          className="card text-center cursor-pointer hover:shadow-lg transition-all hover:scale-105 duration-200 bg-blue-50"
+          onClick={() => { setFilterStatus('all'); setFilterSource('call_center'); }}
+        >
+          <p className="text-2xl font-bold text-blue-600">{stats.call_center}</p>
+          <p className="text-sm text-gray-600 mt-1">Call Center</p>
         </div>
         <div
           className="card text-center cursor-pointer hover:shadow-lg transition-all hover:scale-105 duration-200"
@@ -166,6 +306,17 @@ export default function Orders() {
               className="input pl-10"
             />
           </div>
+
+          {/* Source Filter */}
+          <select
+            value={filterSource}
+            onChange={(e) => setFilterSource(e.target.value)}
+            className="input md:w-48"
+          >
+            <option value="all">Barcha manba</option>
+            <option value="call_center">Call Center</option>
+            <option value="direct">To'g'ridan-to'g'ri</option>
+          </select>
 
           {/* Status Filter */}
           <select
@@ -319,9 +470,20 @@ export default function Orders() {
                   </svg>
                 </button>
               </div>
-              <span className={`inline-flex mt-2 px-3 py-1 rounded-full text-sm font-medium ${statusColors[selectedOrder.status]}`}>
-                {statusNames[selectedOrder.status]}
-              </span>
+              <div className="flex items-center justify-between mt-2">
+                <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${statusColors[selectedOrder.status]}`}>
+                  {statusNames[selectedOrder.status]}
+                </span>
+                {(selectedOrder.order_source === 'call_center' || !selectedOrder.master_id) && selectedOrder.status === 'pending' && (
+                  <button
+                    onClick={() => openAssignModal(selectedOrder)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
+                  >
+                    <UserCog className="w-4 h-4" />
+                    Usta belgilash
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="p-6 space-y-6">
@@ -510,6 +672,152 @@ export default function Orders() {
                   <p className="text-gray-600">Bu buyurtma uchun hali sharh qoldirilmagan</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Master Modal */}
+      {showAssignModal && selectedOrder && (
+        <div
+          className="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            setShowAssignModal(false);
+            setSelectedMaster(null);
+            setAssignPrice('');
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Usta belgilash</h2>
+              <button
+                onClick={() => {
+                  setShowAssignModal(false);
+                  setSelectedMaster(null);
+                  setAssignPrice('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Order Info */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-gray-500">Buyurtma</p>
+                    <p className="font-semibold">#{selectedOrder.order_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Xizmat</p>
+                    <p className="font-semibold">{selectedOrder.service_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Mijoz</p>
+                    <p className="font-semibold">{selectedOrder.client_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Telefon</p>
+                    <p className="font-semibold">{selectedOrder.client_phone}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Master Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Usta tanlang
+                </label>
+                {masters.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <UserCog className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                    <p>Bu kategoriya uchun ustalar topilmadi</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {masters.map((master) => (
+                      <div
+                        key={master.id}
+                        onClick={() => handleMasterSelect(master.id)}
+                        className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                          selectedMaster === master.id
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-gray-900">{master.full_name}</p>
+                              <div className="flex items-center gap-1">
+                                <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                                <span className="text-sm text-gray-600">{master.rating?.toFixed(1) || '0.0'}</span>
+                              </div>
+                            </div>
+                            <p className="text-sm text-gray-500">{master.profession}</p>
+                            <p className="text-xs text-gray-400">{master.phone}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-medium text-gray-700">Chaqiruv narxi:</p>
+                            <p className="text-lg font-bold text-blue-600">
+                              {((master.hourly_rate || 0) / 1000).toFixed(0)}K
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Price Input */}
+              {selectedMaster && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Narx (ming so'm)
+                  </label>
+                  <input
+                    type="number"
+                    value={assignPrice}
+                    onChange={(e) => setAssignPrice(e.target.value)}
+                    placeholder="Masalan: 150"
+                    className="input w-full"
+                    min="0"
+                    step="1"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {assignPrice ? `${parseInt(assignPrice || 0)} ming so'm` : 'Narxni kiriting yoki o\'zgartiring'}
+                  </p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t">
+                <button
+                  onClick={() => {
+                    setShowAssignModal(false);
+                    setSelectedMaster(null);
+                    setAssignPrice('');
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  onClick={handleAssignMaster}
+                  disabled={!selectedMaster || !assignPrice}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+                >
+                  Qabul qilish
+                </button>
+              </div>
             </div>
           </div>
         </div>
