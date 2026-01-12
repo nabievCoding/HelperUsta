@@ -712,31 +712,31 @@ export default function Orders() {
               <div className="bg-gray-50 p-4 rounded-lg">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-xs text-gray-500">Buyurtma</p>
-                    <p className="font-semibold">#{selectedOrder.order_number}</p>
+                    <p className="text-xs text-black">Buyurtma</p>
+                    <p className="font-semibold text-black">#{selectedOrder.order_number}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Xizmat</p>
-                    <p className="font-semibold">{selectedOrder.service_name}</p>
+                    <p className="text-xs text-black">Xizmat</p>
+                    <p className="font-semibold text-black">{selectedOrder.service_name}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Mijoz</p>
-                    <p className="font-semibold">{selectedOrder.client_name}</p>
+                    <p className="text-xs text-black">Mijoz</p>
+                    <p className="font-semibold text-black">{selectedOrder.client_name}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Telefon</p>
-                    <p className="font-semibold">{selectedOrder.client_phone}</p>
+                    <p className="text-xs text-black">Telefon</p>
+                    <p className="font-semibold text-black">{selectedOrder.client_phone}</p>
                   </div>
                 </div>
               </div>
 
               {/* Master Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-black mb-2">
                   Usta tanlang
                 </label>
                 {masters.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-black">
                     <UserCog className="w-12 h-12 mx-auto mb-2 text-gray-300" />
                     <p>Bu kategoriya uchun ustalar topilmadi</p>
                   </div>
@@ -755,17 +755,17 @@ export default function Orders() {
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <p className="font-semibold text-gray-900">{master.full_name}</p>
+                              <p className="font-semibold text-black">{master.full_name}</p>
                               <div className="flex items-center gap-1">
                                 <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                                <span className="text-sm text-gray-600">{master.rating?.toFixed(1) || '0.0'}</span>
+                                <span className="text-sm text-black">{master.rating?.toFixed(1) || '0.0'}</span>
                               </div>
                             </div>
-                            <p className="text-sm text-gray-500">{master.profession}</p>
-                            <p className="text-xs text-gray-400">{master.phone}</p>
+                            <p className="text-sm text-black">{master.profession}</p>
+                            <p className="text-xs text-black">{master.phone}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-medium text-gray-700">Chaqiruv narxi:</p>
+                            <p className="text-sm font-medium text-black">Chaqiruv narxi:</p>
                             <p className="text-lg font-bold text-blue-600">
                               {((master.hourly_rate || 0) / 1000).toFixed(0)}K
                             </p>
@@ -780,7 +780,7 @@ export default function Orders() {
               {/* Price Input */}
               {selectedMaster && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-black mb-2">
                     Narx (ming so'm)
                   </label>
                   <input
@@ -788,11 +788,11 @@ export default function Orders() {
                     value={assignPrice}
                     onChange={(e) => setAssignPrice(e.target.value)}
                     placeholder="Masalan: 150"
-                    className="input w-full"
+                    className="input w-full text-black"
                     min="0"
                     step="1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-black mt-1">
                     {assignPrice ? `${parseInt(assignPrice || 0)} ming so'm` : 'Narxni kiriting yoki o\'zgartiring'}
                   </p>
                 </div>
@@ -806,7 +806,7 @@ export default function Orders() {
                     setSelectedMaster(null);
                     setAssignPrice('');
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-2 border border-gray-300 text-black rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Bekor qilish
                 </button>
